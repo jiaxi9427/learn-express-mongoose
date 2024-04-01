@@ -2,31 +2,43 @@ let async = require('async');
 let Book = require('../models/book');
 let BookInstance = require('../models/bookinstance');
 
+function isValidObjectId(id) {
+    return /^[0-9a-fA-F]{24}$/.test(id);
+}
+
 function get_book(id) {
-    if (typeof id !== "string") {
-        return ({status: "error"});
+    if (!isValidObjectId(id)) {
+        return Promise.resolve({status: "error", message: "Invalid ID format"});
     }
     return Book.findOne({'_id': {$eq: id}}).populate('author');
 }
 
 function get_book_dtl(id) {
-  return BookInstance
+    if (!isValidObjectId(id)) {
+        return Promise.resolve({status: "error", message: "Invalid ID format"});
+    }
+    return BookInstance
           .find({ 'book': id })
           .select('imprint status');
 }
 
 exports.show_book_dtls = async (res, id) => {
-  const results = await Promise.all([get_book(id).exec(), get_book_dtl(id).exec()])
-  try {
-    let book = await results[0];
-    let copies = await results[1];
-    res.send({
-      title: book.title,
-      author: book.author.name,
-      copies: copies,
-    });
-  }
-  catch(err) {
-    res.send(`Book ${id} not found`);
-  } 
+    try {
+        const results = await Promise.all([get_book(id), get_book_dtl(id)]);
+        let book = results[0];
+        let copies = results[1];
+
+        if (book.status === "error" || copies.status === "error") {
+            throw new Error("Invalid ID format");
+        }
+
+        res.send({
+            title: book.title,
+            author: book.author.name,
+            copies: copies,
+        });
+    } catch(err) {
+        res.send(`Error: ${err.message}`);
+    } 
 }
+
